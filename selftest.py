@@ -166,6 +166,47 @@ def test_short_gaps_drive_bus_off_and_long_gap_escapes() -> None:
     assert eve_escaped.estate.state is NodeState.ERROR_PASSIVE
 
 
+def test_collision_counter_edge_cases() -> None:
+    """Verify arb-only losers, observers, and already bus-off nodes."""
+    winner = _DummyNode("Winner")        # ID 0x00F, data 0x00
+    bit_loser = _DummyNode("BitLoser")   # ID 0x00F, data 0xFF
+    arb_loser = _DummyNode("ArbLoser")   # ID 0x200 (loses in ID field)
+    observer = _DummyNode("Observer")
+    dead_node = _DummyNode("DeadNode", bus_off=True)
+    dead_node.estate.tec = 256
+    dead_node.estate._reclassify()
+
+    s_win = encode(Frame(0x00F, b"\x00"))
+    s_bit = encode(Frame(0x00F, b"\xFF"))
+    s_arb = encode(Frame(0x200, b"\x55"))
+
+    contenders = [winner, bit_loser, arb_loser]
+    res = resolve_collision([(winner, s_win), (bit_loser, s_bit), (arb_loser, s_arb)])
+    res = apply_collision_errors(contenders, res, [observer, dead_node])
+
+    assert res.aborted_by_active_error is True
+    assert winner.estate.tec == 8
+    assert bit_loser.estate.tec == 8
+    assert arb_loser.estate.tec == 0     # arbitration loser takes no error
+    assert observer.estate.rec == 1      # active observer increments REC
+    assert dead_node.estate.rec == 0     # bus-off node does not update counters
+
+
+def test_bus_integration_smoke() -> None:
+    """Verify Bus, EcuNode, and Attacker integrate cleanly without CollisionModel."""
+    from parrot_sim.simulator import Attacker, Bus, EcuNode
+
+    owner = EcuNode("ECU_0x120", 0x120, period_bits=2000, parrot=True)
+    atk = Attacker("ATTACKER", 0x120, inject_period_bits=1500, phase=500)
+    bus = Bus([owner, atk])
+    log = bus.run(duration_bits=50_000)
+
+    assert len(log) > 0
+    assert atk.estate.tec > 0
+
+
+
+
 def run_all() -> None:
     tests = [
         test_frame_encoding_and_bit_stuffing,
@@ -173,6 +214,8 @@ def run_all() -> None:
         test_sixteen_active_collisions_reach_error_passive,
         test_seventeenth_collision_breaks_symmetry,
         test_short_gaps_drive_bus_off_and_long_gap_escapes,
+        test_collision_counter_edge_cases,
+        test_bus_integration_smoke
     ]
     for fn in tests:
         fn()

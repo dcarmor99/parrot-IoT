@@ -25,7 +25,7 @@ Rules modelled here:
 
 
 from __future__ import annotations
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 
 DOMINANT = 0
@@ -140,7 +140,6 @@ class ErrorState:
     # incurring a Form Error.
     pending_passive_flag: bool = False
 
-
     def _reclassify(self):
         if self.tec > TEC_BUSOFF_THRESHOLD:
             self.state = NodeState.BUS_OFF
@@ -149,7 +148,6 @@ class ErrorState:
             self.state = NodeState.ERROR_PASSIVE
         else:
             self.state = NodeState.ERROR_ACTIVE
-            self.pending_passive_flag = False
 
     def transmit_error(self, delta: int = TEC_ERR_DELTA):
         if self.state is NodeState.BUS_OFF:
